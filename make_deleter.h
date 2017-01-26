@@ -3,16 +3,16 @@
 namespace details
 {
    template<typename ReturnType, typename Argument>
-   constexpr auto function_pointer_return_type(ReturnType(*)(Argument))->ReturnType;
+   constexpr ReturnType function_pointer_return_type(ReturnType(*)(Argument));
 
    template<typename ReturnType, typename Argument>
-   constexpr auto function_pointer_argument(ReturnType(*)(Argument))->Argument;
+   constexpr Argument function_pointer_argument(ReturnType(*)(Argument));
 
    template<typename ReturnType, typename Argument>
-   constexpr auto function_pointer_return_type(ReturnType(Argument))->ReturnType;
+   constexpr ReturnType function_pointer_return_type(ReturnType(Argument));
 
    template<typename ReturnType, typename Argument>
-   constexpr auto function_pointer_argument(ReturnType(Argument))->Argument;
+   constexpr Argument function_pointer_argument(ReturnType(Argument));
 
    template<typename ReturnType, typename Argument, ReturnType(*func_ptr)(Argument)>
    struct deleter
@@ -29,12 +29,12 @@ namespace details
                       decltype(::details::function_pointer_argument(func_ptr)),     \
                       func_ptr>()
 
-template<typename FuncPtr, FuncPtr func_ptr>
-details::deleter<
-   decltype(function_pointer_return_type(func_ptr)),
-   decltype(function_pointer_argument(func_ptr)), 
-   func_ptr
-> make_deleter()
+template<typename Func, Func* func_ptr>
+auto make_deleter()
 {
-   return{};
+   return details::deleter<
+      decltype(details::function_pointer_return_type(func_ptr)),
+      decltype(details::function_pointer_argument(func_ptr)),
+      func_ptr
+   >();
 }
