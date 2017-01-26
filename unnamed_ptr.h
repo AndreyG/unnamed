@@ -13,87 +13,59 @@ namespace std
 
 namespace details
 {
+    template<typename T, typename... CtorArgs>
+    std::enable_if_t<std::is_constructible<T, CtorArgs...>::value, T*> make(CtorArgs&&... args)
+    {
+        return new T(std::forward<CtorArgs>(args)...);
+    }
+
+    template<typename T, typename... CtorArgs>
+    std::enable_if_t<!std::is_constructible<T, CtorArgs...>::value, T*> make(CtorArgs&&... args)
+    {
+        return new T{ std::forward<CtorArgs>(args)... };
+    }
+
     template<class T, class Deleter>
-    class deleter_with_pointer
+    class deleter_holder
     {
         T * ptr_;
         Deleter deleter_;
 
     public:
-       static void destroy(void * data)
-       {
-          auto self = reinterpret_cast<deleter_with_pointer *>(data);
-          self->deleter_(self->ptr_);
-          delete self;
-       }
+        static void destroy(void * data)
+        {
+            auto self = reinterpret_cast<deleter_holder *>(data);
+            self->deleter_(self->ptr_);
+            delete self;
+        }
 
-       deleter_with_pointer(T * ptr, Deleter deleter)
+        deleter_holder(T * ptr, Deleter deleter)
             : ptr_(ptr)
             , deleter_(deleter)
-       {}
+        {}
 
-       deleter_with_pointer            (deleter_with_pointer const &) = delete;
-       deleter_with_pointer& operator =(deleter_with_pointer const &) = delete;
-    };
-
-    template<class T>
-    class deleter_with_object
-    {
-       std::aligned_storage_t<sizeof(T), alignof(T)> store_;
-
-       template<typename... CtorArgs>
-       std::enable_if_t<std::is_constructible<T, CtorArgs...>::value> init(CtorArgs&&... args)
-       {
-          new(&store_) T(std::forward<CtorArgs>(args)...);
-       }
-
-       template<typename... CtorArgs>
-       std::enable_if_t<!std::is_constructible<T, CtorArgs...>::value> init(CtorArgs&&... args)
-       {
-          new(&store_) T{ std::forward<CtorArgs>(args)... };
-       }
-
-    public:
-       template<typename... CtorArgs>
-       deleter_with_object(CtorArgs&&... args)
-       {
-          init(std::forward<CtorArgs>(args)...);
-       }
-
-       T * object_pointer()
-       {
-          return reinterpret_cast<T *>(&store_);
-       }
-
-       static void destroy(void * data)
-       {
-          auto self = reinterpret_cast<deleter_with_object *>(data);
-          self->object_pointer()->~T();
-          delete self;
-       }
-
-       deleter_with_object            (deleter_with_object const &) = delete;
-       deleter_with_object& operator =(deleter_with_object const &) = delete;
+        deleter_holder            (deleter_holder const &) = delete;
+        deleter_holder& operator =(deleter_holder const &) = delete;
     };
 
     template<class T, class Deleter>
-    struct DeleterHolder : Deleter
+    struct empty_deleter_holder : Deleter
     {
     private:
         T * ptr_;
 
-   public:
-        DeleterHolder(T * ptr, Deleter deleter)
+    public:
+        static void destroy(void * data)
+        {
+            auto deleter = reinterpret_cast<empty_deleter_holder &>(data);
+            deleter(deleter.ptr_);
+        }
+
+        empty_deleter_holder(T * ptr, Deleter deleter)
             : Deleter(deleter)
             , ptr_(ptr)
         {
-            static_assert(sizeof(DeleterHolder) == sizeof(void *), "sizeof(DeleterHolder) must be equal sizeof(void*)");
-        }
-
-        static void apply(void * data)
-        {
-            auto deleter = reinterpret_cast<DeleterHolder &>(data);
-            deleter(deleter.ptr_);
+            static_assert(sizeof(empty_deleter_holder) == sizeof(void *), "sizeof(empty_deleter_holder) must be equal sizeof(void*)");
         }
     };
 }
@@ -102,20 +74,20 @@ template<class T>
 class unnamed_ptr
 {
     template<class U>
-    static constexpr bool is_convertible = std::is_convertible<U *, T *>::value; 
+    static constexpr bool is_convertible = std::is_convertible<U *, T *>::value;
 
     template<class U>
     using is_convertible_tag = std::enable_if_t<is_convertible<U>> *;
 
     template<class U>
-    using ref_to_self = std::enable_if_t<is_convertible<U>, unnamed_ptr>&;  
+    using ref_to_self = std::enable_if_t<is_convertible<U>, unnamed_ptr>&;
 
     using deleter_data_t = void *;
-    using deleter_func_t = void (*)(deleter_data_t);
+    using deleter_func_t = void(*)(deleter_data_t);
 
     template<class Deleter>
     static constexpr bool is_nothrow_constructible
-         = std::is_nothrow_constructible_v<std::remove_cv_t<std::remove_reference_t<Deleter>>, Deleter &&>;
+        = std::is_nothrow_constructible_v<std::remove_cv_t<std::remove_reference_t<Deleter>>, Deleter &&>;
 
     template<class U>
     friend class unnamed_ptr;
@@ -128,16 +100,16 @@ private:
 public:
     template<class U, class Deleter>
     unnamed_ptr(U * ptr, Deleter deleter, is_convertible_tag<U> = nullptr, std::enable_if_t<std::is_empty_v<Deleter>>* = nullptr) noexcept
-       : deleter_func_(details::DeleterHolder<U, Deleter>::apply)
-       , ptr_(ptr)
+        : deleter_func_(details::empty_deleter_holder<U, Deleter>::destroy)
+        , ptr_(ptr)
     {
-       new(&deleter_data_) details::DeleterHolder<U, Deleter>(ptr, deleter);
+        new(&deleter_data_) details::empty_deleter_holder<U, Deleter>(ptr, deleter);
     }
 
     template<class U, class Deleter>
     unnamed_ptr(U * ptr, Deleter deleter, is_convertible_tag<U> = nullptr, std::enable_if_t<!std::is_empty_v<Deleter>>* = nullptr) noexcept(is_nothrow_constructible<Deleter>)
-        : deleter_func_(details::deleter_with_pointer<U, Deleter>::destroy)
-        , deleter_data_(new details::deleter_with_pointer<U, Deleter>(ptr, std::move(deleter)))
+        : deleter_func_(details::deleter_holder<U, Deleter>::destroy)
+        , deleter_data_(new details::deleter_holder<U, Deleter>(ptr, std::move(deleter)))
         , ptr_(ptr)
     {
     }
@@ -163,9 +135,7 @@ public:
 
     template<typename... CtorArgs>
     unnamed_ptr(std::in_place_t, CtorArgs&&... args) noexcept (std::is_nothrow_constructible_v<T, CtorArgs&&...>)
-        : deleter_func_(details::deleter_with_object<T>::destroy)
-        , deleter_data_(new details::deleter_with_object<T>(std::forward<CtorArgs>(args)...))
-        , ptr_(reinterpret_cast<details::deleter_with_object<T> *>(deleter_data_)->object_pointer())
+        : unnamed_ptr(details::make<T>(std::forward<CtorArgs>(args)...))
     {}
 
     template<class U>
@@ -189,13 +159,13 @@ public:
     template<class U, class D>
     ref_to_self<U> operator = (std::unique_ptr<U, D> && other)
     {
-        return *this = unnamed_ptr(std::move(other)); 
+        return *this = unnamed_ptr(std::move(other));
     }
 
     ~unnamed_ptr()
     {
-       if (ptr_)
-          deleter_func_(deleter_data_);
+        if (ptr_)
+            deleter_func_(deleter_data_);
     }
 
     T* get() const noexcept
@@ -217,5 +187,5 @@ public:
 template<class T, typename... CtorArgs>
 unnamed_ptr<T> make_unnamed(CtorArgs&&... args)
 {
-    return unnamed_ptr<T>(std::in_place, std::forward<CtorArgs>(args)...); 
+    return unnamed_ptr<T>(std::in_place, std::forward<CtorArgs>(args)...);
 }
