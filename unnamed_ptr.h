@@ -173,6 +173,10 @@ public:
         : unnamed_ptr(static_cast<T *>(other.get()), std::move(other))
     {}
 
+    unnamed_ptr(std::nullptr_t) noexcept
+        : ptr_(nullptr)
+    {}
+
     template<class U>
     ref_to_self<U> operator = (unnamed_ptr<U> && other) noexcept
     {
@@ -202,6 +206,11 @@ public:
     T* operator -> () const noexcept
     {
         return get();
+    }
+
+    explicit operator bool() const
+    {
+        return ptr_ != nullptr;
     }
 };
 
