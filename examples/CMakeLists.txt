@@ -1,0 +1,8 @@
+add_executable(int int.cpp)
+target_link_libraries(int ${PROJECT_NAME})
+add_executable(file file.cpp)
+target_link_libraries(file ${PROJECT_NAME})
+add_executable(polymorphic polymorphic.cpp)
+target_link_libraries(polymorphic ${PROJECT_NAME})
+add_executable(self-destroyer self_destroyer.cpp)
+target_link_libraries(self-destroyer ${PROJECT_NAME})
