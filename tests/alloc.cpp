@@ -29,6 +29,17 @@ namespace
    struct S : boost::noncopyable
    {
    };
+
+   template<class T>
+   using universal_ptr = std::unique_ptr<T, std::function<void(void *)>>;
+
+   template<class T, class... CtorArgs>
+   universal_ptr<T> make_universal(CtorArgs &&... args)
+   {
+       auto dummy_ptr = std::make_unique<T>(std::forward<CtorArgs>(args)...);
+       std::function<void (void *)> deleter = [ptr = dummy_ptr.get()] (void *) { delete ptr; };
+       return { dummy_ptr.release(), std::move(deleter) };
+   }
 }
 
 BOOST_AUTO_TEST_SUITE(Alloc)
@@ -44,6 +55,13 @@ BOOST_AUTO_TEST_CASE(MakeUnnamed)
 {
    auto old_allocations_num = allocation_num;
    make_unnamed<S>();
+   BOOST_CHECK_EQUAL(allocation_num, old_allocations_num + 1);
+}
+
+BOOST_AUTO_TEST_CASE(MakeUniversal)
+{
+   auto old_allocations_num = allocation_num;
+   make_universal<S>();
    BOOST_CHECK_EQUAL(allocation_num, old_allocations_num + 1);
 }
 
@@ -86,6 +104,14 @@ BOOST_AUTO_TEST_CASE(LambdaPlusDeleter)
    void (*deleter)(S*) = [] (S * s) { delete s; };
    unnamed_ptr<S> ptr(s, deleter);
    BOOST_CHECK_EQUAL(allocation_num, old_allocations_num + 1);
+}
+
+BOOST_AUTO_TEST_CASE(UniversalWithCustomDeleter)
+{
+   auto s = new S;
+   auto old_allocations_num = allocation_num;
+   universal_ptr<S> ptr(s, [s](void *) { boost::checked_delete(s); });
+   BOOST_CHECK_EQUAL(allocation_num, old_allocations_num);
 }
 
 BOOST_AUTO_TEST_SUITE_END()
