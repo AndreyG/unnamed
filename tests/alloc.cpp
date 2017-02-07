@@ -36,7 +36,7 @@ BOOST_AUTO_TEST_SUITE(Alloc)
 BOOST_AUTO_TEST_CASE(DirectInitialization)
 {
    auto old_allocations_num = allocation_num;
-   unnamed_ptr<S> ptr(std::in_place);
+   unnamed_ptr<S> ptr(new S);
    BOOST_CHECK_EQUAL(allocation_num, old_allocations_num + 1);
 }
 

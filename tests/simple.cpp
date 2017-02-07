@@ -71,33 +71,21 @@ BOOST_AUTO_TEST_CASE(DirectConstructionWithFuncDeleter)
    BOOST_CHECK(object_state == false);
 }
 
-BOOST_AUTO_TEST_CASE(InPlaceConstruction)
-{
-   boost::logic::tribool object_state = boost::logic::indeterminate;
-   {
-      SPtr s(std::in_place, object_state);
-      BOOST_CHECK(object_state == true);
-   }
-
-   BOOST_CHECK(object_state == false);
-
-   {
-      struct AggregateInitialization
-      {
-         boost::logic::tribool state;
-      };
-
-      unnamed_ptr<AggregateInitialization> s(std::in_place, boost::logic::indeterminate);
-      BOOST_CHECK(boost::logic::indeterminate(s->state));
-   }
-}
-
 BOOST_AUTO_TEST_CASE(MakeUnnamed)
 {
    boost::logic::tribool object_state = boost::logic::indeterminate;
    {
       auto s = make_unnamed<S>(object_state);
       BOOST_CHECK(object_state == true);
+   }
+   {
+       struct AggregateInitialization
+       {
+           boost::logic::tribool state;
+       };
+
+       auto s = make_unnamed<AggregateInitialization>(boost::logic::indeterminate);
+       BOOST_CHECK(boost::logic::indeterminate(s->state));
    }
    BOOST_CHECK(object_state == false);
 }

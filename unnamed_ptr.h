@@ -2,14 +2,6 @@
 
 #include <memory>
 #include <type_traits>
-#include <functional>
-
-namespace std
-{
-    class in_place_t {};
-
-    constexpr in_place_t in_place;
-}
 
 namespace details
 {
@@ -133,11 +125,6 @@ public:
         : unnamed_ptr(ptr.release(), std::move(ptr.get_deleter()))
     {}
 
-    template<typename... CtorArgs>
-    unnamed_ptr(std::in_place_t, CtorArgs&&... args) noexcept (std::is_nothrow_constructible_v<T, CtorArgs&&...>)
-        : unnamed_ptr(details::make<T>(std::forward<CtorArgs>(args)...))
-    {}
-
     template<class U>
     unnamed_ptr(unnamed_ptr<U> && other, is_convertible_tag<U> = nullptr) noexcept
         : unnamed_ptr(static_cast<T *>(other.get()), std::move(other))
@@ -187,5 +174,5 @@ public:
 template<class T, typename... CtorArgs>
 unnamed_ptr<T> make_unnamed(CtorArgs&&... args)
 {
-    return unnamed_ptr<T>(std::in_place, std::forward<CtorArgs>(args)...);
+    return unnamed_ptr<T>(details::make<T>(std::forward<CtorArgs>(args)...));
 }
