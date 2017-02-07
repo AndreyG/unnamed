@@ -6,3 +6,10 @@ add_executable(polymorphic polymorphic.cpp)
 target_link_libraries(polymorphic ${PROJECT_NAME})
 add_executable(self-destroyer self_destroyer.cpp)
 target_link_libraries(self-destroyer ${PROJECT_NAME})
+
+add_executable(incomplete-class
+  incomplete_class.cpp
+  incomplete_class.h
+  incomplete_class_user.cpp
+)
+target_link_libraries(incomplete-class ${PROJECT_NAME})
