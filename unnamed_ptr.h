@@ -60,6 +60,8 @@ namespace details
             static_assert(sizeof(empty_deleter_holder) == sizeof(void *), "sizeof(empty_deleter_holder) must be equal to sizeof(void*)");
         }
     };
+
+    inline void empty_deleter(void *) {}
 }
 
 template<class T>
@@ -77,9 +79,7 @@ class unnamed_ptr
     using deleter_data_t = void *;
     using deleter_func_t = void(*)(deleter_data_t);
 
-    template<class Deleter>
-    static constexpr bool is_nothrow_constructible
-        = std::is_nothrow_constructible_v<std::remove_cv_t<std::remove_reference_t<Deleter>>, Deleter &&>;
+    static constexpr deleter_func_t default_deleter = &details::empty_deleter;
 
     template<class U>
     friend class unnamed_ptr;
@@ -99,7 +99,7 @@ public:
     }
 
     template<class U, class Deleter>
-    unnamed_ptr(U * ptr, Deleter deleter, is_convertible_tag<U> = nullptr, std::enable_if_t<!std::is_empty_v<Deleter>>* = nullptr) noexcept(is_nothrow_constructible<Deleter>)
+    unnamed_ptr(U * ptr, Deleter deleter, is_convertible_tag<U> = nullptr, std::enable_if_t<!std::is_empty_v<Deleter>>* = nullptr) noexcept(std::is_nothrow_move_constructible_v<Deleter>)
         : deleter_func_(details::deleter_holder<U, Deleter>::destroy)
         , deleter_data_(new details::deleter_holder<U, Deleter>(ptr, std::move(deleter)))
         , ptr_(ptr)
@@ -113,6 +113,7 @@ public:
         , ptr_(ptr)
     {
         other.ptr_ = nullptr;
+        other.deleter_func_ = default_deleter;
     }
 
     template<class U>
@@ -121,7 +122,7 @@ public:
     {}
 
     template<class U, class Deleter>
-    unnamed_ptr(std::unique_ptr<U, Deleter> && ptr, is_convertible_tag<U> = nullptr) noexcept(is_nothrow_constructible<Deleter>)
+    unnamed_ptr(std::unique_ptr<U, Deleter> && ptr, is_convertible_tag<U> = nullptr) noexcept(std::is_nothrow_move_constructible_v<Deleter>)
         : unnamed_ptr(ptr.release(), std::move(ptr.get_deleter()))
     {}
 
@@ -130,8 +131,9 @@ public:
         : unnamed_ptr(static_cast<T *>(other.get()), std::move(other))
     {}
 
-    unnamed_ptr(std::nullptr_t) noexcept
-        : ptr_(nullptr)
+    unnamed_ptr(std::nullptr_t = nullptr) noexcept
+        : deleter_func_(default_deleter)
+        , ptr_(nullptr)
     {}
 
     template<class U>
@@ -144,15 +146,22 @@ public:
     }
 
     template<class U, class D>
-    ref_to_self<U> operator = (std::unique_ptr<U, D> && other)
+    ref_to_self<U> operator = (std::unique_ptr<U, D> && other) noexcept(std::is_nothrow_move_constructible_v<D>)
     {
         return *this = unnamed_ptr(std::move(other));
     }
 
+    unnamed_ptr& operator = (std::nullptr_t) noexcept
+    {
+        deleter_func_(deleter_data_);
+        deleter_func_ = default_deleter;
+        ptr_ = nullptr;
+        return *this;
+    }
+
     ~unnamed_ptr()
     {
-        if (ptr_)
-            deleter_func_(deleter_data_);
+        deleter_func_(deleter_data_);
     }
 
     T* get() const noexcept
