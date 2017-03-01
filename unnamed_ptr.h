@@ -57,7 +57,7 @@ namespace details
             : Deleter(deleter)
             , ptr_(ptr)
         {
-            static_assert(sizeof(empty_deleter_holder) == sizeof(void *), "sizeof(empty_deleter_holder) must be equal sizeof(void*)");
+            static_assert(sizeof(empty_deleter_holder) == sizeof(void *), "sizeof(empty_deleter_holder) must be equal to sizeof(void*)");
         }
     };
 }
