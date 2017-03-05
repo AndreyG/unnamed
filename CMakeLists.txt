@@ -30,6 +30,7 @@ add_executable(tests
 )
 
 target_compile_definitions(tests PRIVATE BOOST_TEST_DYN_LINK)
+set_property(TARGET tests PROPERTY CXX_STANDARD 14)
 target_link_libraries(tests ${PROJECT_NAME} Boost::unit_test_framework)
 
 add_test(NAME test COMMAND tests)
