@@ -84,6 +84,17 @@ BOOST_AUTO_TEST_CASE(FromUniquePointer)
    BOOST_CHECK(object_state == false);
 }
 
+BOOST_AUTO_TEST_CASE(AssignmentFromUniquePointer)
+{
+	boost::logic::tribool object_state = boost::logic::indeterminate;
+	{
+		BasePtr b;
+		b = std::make_unique<Derived>(object_state);
+		BOOST_CHECK(object_state == true);
+	}
+	BOOST_CHECK(object_state == false);
+}
+
 BOOST_AUTO_TEST_CASE(FromUniquePointerWithCustomDeleter)
 {
    boost::logic::tribool object_state = boost::logic::indeterminate;

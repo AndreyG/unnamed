@@ -61,62 +61,63 @@ namespace details
                           "sizeof(empty_deleter_holder) must be equal to sizeof(void*)");
         }
     };
-
-    inline void empty_deleter(void *) {}
 }
 
+class type_erased_deleter
+{
+	using deleter_data_t = void *;
+	using deleter_func_t = void (*)(deleter_data_t);
+
+	deleter_func_t deleter_func_;
+	deleter_data_t deleter_data_;
+
+public:
+	void operator() (void *)
+	{
+		deleter_func_(deleter_data_);
+	}
+
+	type_erased_deleter()
+		: deleter_func_([] (void *) {})
+	{}
+
+	template<class U, class Deleter>
+	type_erased_deleter(U * ptr, Deleter deleter, std::enable_if_t<std::is_empty<Deleter>::value>* = nullptr)
+		: deleter_func_(details::empty_deleter_holder<U, Deleter>::destroy)
+	{
+		new(&deleter_data_) details::empty_deleter_holder<U, Deleter>(ptr, deleter);
+	}
+
+	template<class U, class Deleter>
+	type_erased_deleter(U * ptr, Deleter deleter, std::enable_if_t<!std::is_empty<Deleter>::value>* = nullptr)
+		: deleter_func_(details::deleter_holder<U, Deleter>::destroy)
+		, deleter_data_(new details::deleter_holder<U, Deleter>(ptr, std::move(deleter)))
+	{}
+};
+
 template<class T>
-class unnamed_ptr
+class unnamed_ptr : public std::unique_ptr<T, type_erased_deleter>
 {
     template<class U>
-    static constexpr bool is_convertible = std::is_convertible<U *, T *>::value;
-
-    template<class U>
-    using is_convertible_tag = std::enable_if_t<is_convertible<U>> *;
-
-    template<class U>
-    using ref_to_self = std::enable_if_t<is_convertible<U>, unnamed_ptr>&;
-
-    using deleter_data_t = void *;
-    using deleter_func_t = void(*)(deleter_data_t);
-
-    static constexpr deleter_func_t default_deleter = &details::empty_deleter;
+    using is_convertible_tag = std::enable_if_t<std::is_convertible<U *, T *>::value> *;
 
     template<class U>
     friend class unnamed_ptr;
 
-private:
-    deleter_func_t deleter_func_;
-    deleter_data_t deleter_data_;
-    T * ptr_;
+	typedef std::unique_ptr<T, type_erased_deleter> base_t;
 
 public:
     template<class U, class Deleter>
-    unnamed_ptr(U * ptr, Deleter deleter, is_convertible_tag<U> = nullptr,
-                std::enable_if_t<std::is_empty<Deleter>::value>* = nullptr) noexcept
-        : deleter_func_(details::empty_deleter_holder<U, Deleter>::destroy)
-        , ptr_(ptr)
-    {
-        new(&deleter_data_) details::empty_deleter_holder<U, Deleter>(ptr, deleter);
-    }
-
-    template<class U, class Deleter>
-    unnamed_ptr(U * ptr, Deleter deleter, is_convertible_tag<U> = nullptr,
-                std::enable_if_t<!std::is_empty<Deleter>::value>* = nullptr) noexcept(std::is_nothrow_move_constructible<Deleter>::value)
-        : deleter_func_(details::deleter_holder<U, Deleter>::destroy)
-        , deleter_data_(new details::deleter_holder<U, Deleter>(ptr, std::move(deleter)))
-        , ptr_(ptr)
+    unnamed_ptr(U * ptr, Deleter deleter, is_convertible_tag<U> = nullptr) noexcept(std::is_nothrow_move_constructible<Deleter>::value)
+		: base_t(ptr, type_erased_deleter(ptr, deleter))
     {
     }
 
     template<class U>
     unnamed_ptr(T * ptr, unnamed_ptr<U> && other) noexcept
-        : deleter_func_(other.deleter_func_)
-        , deleter_data_(other.deleter_data_)
-        , ptr_(ptr)
+        : base_t(ptr, other.get_deleter())
     {
-        other.ptr_ = nullptr;
-        other.deleter_func_ = default_deleter;
+		other.release();
     }
 
     template<class U>
@@ -125,62 +126,13 @@ public:
     {}
 
     template<class U, class Deleter>
-    unnamed_ptr(std::unique_ptr<U, Deleter> && ptr, is_convertible_tag<U> = nullptr) noexcept(std::is_nothrow_move_constructible<Deleter>::value)
-        : unnamed_ptr(ptr.release(), std::move(ptr.get_deleter()))
-    {}
-
-    template<class U>
-    unnamed_ptr(unnamed_ptr<U> && other, is_convertible_tag<U> = nullptr) noexcept
-        : unnamed_ptr(static_cast<T *>(other.get()), std::move(other))
+    unnamed_ptr(std::unique_ptr<U, Deleter> && other, is_convertible_tag<U> = nullptr) noexcept(std::is_nothrow_move_constructible<Deleter>::value)
+        : unnamed_ptr(other.release(), std::move(other.get_deleter()))
     {}
 
     unnamed_ptr(std::nullptr_t = nullptr) noexcept
-        : deleter_func_(default_deleter)
-        , ptr_(nullptr)
+        : base_t(nullptr)
     {}
-
-    template<class U>
-    ref_to_self<U> operator = (unnamed_ptr<U> && other) noexcept
-    {
-        std::swap(deleter_func_, other.deleter_func_);
-        std::swap(deleter_data_, other.deleter_data_);
-        std::swap(ptr_, other.ptr_);
-        return *this;
-    }
-
-    template<class U, class D>
-    ref_to_self<U> operator = (std::unique_ptr<U, D> && other) noexcept(std::is_nothrow_move_constructible<D>::value)
-    {
-        return *this = unnamed_ptr(std::move(other));
-    }
-
-    unnamed_ptr& operator = (std::nullptr_t) noexcept
-    {
-        deleter_func_(deleter_data_);
-        deleter_func_ = default_deleter;
-        ptr_ = nullptr;
-        return *this;
-    }
-
-    ~unnamed_ptr()
-    {
-        deleter_func_(deleter_data_);
-    }
-
-    T* get() const noexcept
-    {
-        return ptr_;
-    }
-
-    T* operator -> () const noexcept
-    {
-        return get();
-    }
-
-    explicit operator bool() const
-    {
-        return ptr_ != nullptr;
-    }
 };
 
 template<class T, typename... CtorArgs>
